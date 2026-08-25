@@ -28,12 +28,27 @@ GREEK_VOWELS_ALL = set("αειουηωάέήίόύώϊϋΐΰΑΕΙΟΥΗΩΆΈΉ
 GREEK_ACCENTED_VOWELS = set("άέήίόύώΐΰΆΈΉΊΌΎΏ")
 GREEK_DIERESIS_VOWELS = set("ϊϋΪΫ")
 
-RE_GREEK_WORD = re.compile(r'^[α-ωάέήίόύώϊϋΐΰa-z]+$', re.IGNORECASE)
+# Common Modern Greek grammatical monosyllables (never take an accent in standard monotonic orthography)
+MONOSYLLABIC_EXEMPTIONS = {
+    "και", "για", "του", "των", "τους", "μου", "σου", "της", "τον", "την",
+    "το", "τα", "οι", "μα", "να", "θα", "δε", "δεν", "μη", "μην", "πως",
+    "που", "σε", "με", "μια", "δυο", "ναι", "ποιος", "ποια", "ποιο", "αν",
+    "κι", "ως", "σαν", "προς", "στο", "στη", "στην", "στα", "στους", "στις",
+    "μου", "σου", "του", "της", "μας", "σας", "τους", "τον", "την", "το"
+}
+
+# Regex to collapse diphthongs/digraphs for syllable counting (αι, ει, οι, ου, υι, αυ, ευ)
+RE_DIGRAPHS = re.compile(r'αι|ει|οι|ου|υι|αυ|ευ|άι|έι|όι', re.IGNORECASE)
 
 
-def count_greek_vowels(word: str) -> int:
-    """Count number of vowel letters in a Greek word to estimate syllable count."""
-    return sum(1 for c in word if c in GREEK_VOWELS_ALL)
+def count_greek_syllables(word: str) -> int:
+    """Accurately estimate syllable count in Modern Greek by accounting for digraphs."""
+    lower = word.lower()
+    if lower in MONOSYLLABIC_EXEMPTIONS:
+        return 1
+    # Replace digraphs with single placeholder vowel
+    simplified = RE_DIGRAPHS.sub('α', lower)
+    return sum(1 for c in simplified if c in GREEK_VOWELS_ALL)
 
 
 def has_greek_accent(word: str) -> bool:
@@ -112,8 +127,8 @@ def audit_corpus(file_path: Path, max_sample_lines: int = 100000) -> Dict:
                 continue
             word_freq[clean_w.lower()] += 1
 
-            vowel_count = count_greek_vowels(clean_w)
-            if vowel_count >= 2:
+            syllable_count = count_greek_syllables(clean_w)
+            if syllable_count >= 2:
                 polysyllabic_words_count += 1
                 if has_greek_accent(clean_w):
                     accented_polysyllabic_count += 1

@@ -22,6 +22,22 @@ from typing import Iterator, Set, Tuple, List, Optional
 from tqdm import tqdm
 
 
+def load_dotenv_if_present():
+    """Automatically loads variables from .env file into os.environ if present."""
+    env_file = Path(__file__).parent / ".env"
+    if env_file.exists():
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip().strip("'\"")
+                    if k and v and k not in os.environ:
+                        os.environ[k] = v
+
+load_dotenv_if_present()
+
+
 # --- Regex Filters & Cleaning Rules ---
 
 # Subtitle timestamp cues: 00:01:23,456 --> 00:01:25,789
@@ -46,6 +62,20 @@ RE_EMAIL = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
 
 # Multiple whitespaces
 RE_WHITESPACE = re.compile(r'\s+')
+
+
+# Administrative dumps, electoral tables, legal gazettes, web boilerplate
+RE_ADMIN_JUNK = re.compile(
+    r'(?i)(?:εκλογικό τμήμα|εκλογικής περιφέρειας|δημοτικής ενότητας|δικηγορικός σύλλογος|'
+    r'αρ\.?\s*πρωτ|α\.δ\.τ|α\.φ\.μ|φ\.ε\.κ|διαύγεια|αδα:|αριθμ\.\s*πραξ|'
+    r'ημερομηνία δημοσίευσης|τελευταία ενημέρωση|συντάχθηκε:|όροι χρήσης|'
+    r'πνευματικά δικαιώματα|cookies?|all rights reserved|τηλ:\s*\d|φαξ:\s*\d|'
+    r'τ\.κ\.\s*\d|ονοματεπώνυμο|επιτυχόντες|αποφασίζουμε|διοικητικό συμβούλιο|'
+    r'πρωτοδικεί|ειρηνοδικεί|συμβολαιογράφ|δελτίο τύπου|διάμετρος/διαδρομή)'
+)
+
+# Repeated characters (e.g. "αααα", "!!!!!")
+RE_REPEATED_CHARS = re.compile(r'(.)\1{3,}')
 
 
 def is_greek_char(char: str) -> bool:
@@ -88,6 +118,10 @@ def clean_text_line(line: str) -> Optional[str]:
     if RE_SUBTITLE_CREDITS.search(line):
         return None
 
+    # Check for administrative dumps, gazettes, electoral tables
+    if RE_ADMIN_JUNK.search(line):
+        return None
+
     # Strip hearing-impaired tags and sound notations
     line = RE_BRACKETS.sub('', line)
 
@@ -97,9 +131,8 @@ def clean_text_line(line: str) -> Optional[str]:
     # Normalize unicode (NFC)
     line = unicodedata.normalize('NFC', line)
 
-    # Normalize Greek punctuation (e.g., standard semicolon as Greek question mark)
-    line = line.replace(';', ';')  # Unicode Greek question mark is 0x037E if needed, keep standard or consistent
-    line = line.replace(';', ';')  # Standardize on standard Greek question mark ;
+    # Normalize Greek punctuation (standardize on Greek question mark ;)
+    line = line.replace(';', ';').replace(';', ';')
     line = line.replace('«', '"').replace('»', '"').replace('“', '"').replace('”', '"')
     line = line.replace('’', "'").replace('`', "'")
 
@@ -108,6 +141,10 @@ def clean_text_line(line: str) -> Optional[str]:
 
     # Discard if too short
     if not line:
+        return None
+
+    # Discard lines with character repetitions (e.g. "αααααα")
+    if RE_REPEATED_CHARS.search(line):
         return None
 
     # Length constraints: between 3 and 40 words
@@ -119,14 +156,32 @@ def clean_text_line(line: str) -> Optional[str]:
     if calculate_greek_ratio(line) < 0.85:
         return None
 
+    # Uppercase ratio constraint: discard all-caps shouting and tabular records
+    letters = [c for c in line if c.isalpha()]
+    if letters:
+        upper_letters = [c for c in letters if c.isupper()]
+        if (len(upper_letters) / len(letters)) > 0.25 and len(words) > 3:
+            return None
+
+    # Digit / number density constraint (discard tables, phone numbers, ID lists)
+    digit_count = sum(1 for c in line if c.isdigit())
+    if (digit_count / len(line)) > 0.08:
+        return None
+
+    standalone_nums = [w for w in words if w.isdigit()]
+    if len(standalone_nums) > 1:
+        return None
+
     return line
 
 
 def process_text_stream(lines: Iterator[str],
                         seen_hashes: Set[str],
-                        max_samples: Optional[int] = None) -> List[str]:
-    """Clean and deduplicate a stream of raw text lines."""
+                        max_samples: Optional[int] = None,
+                        desc: str = "Processing") -> List[str]:
+    """Clean and deduplicate a stream of raw text lines with progress tracking."""
     cleaned_lines: List[str] = []
+    pbar = tqdm(total=max_samples, desc=desc, unit=" lines")
     
     for raw_line in lines:
         cleaned = clean_text_line(raw_line)
@@ -136,8 +191,10 @@ def process_text_stream(lines: Iterator[str],
             if line_hash not in seen_hashes:
                 seen_hashes.add(line_hash)
                 cleaned_lines.append(cleaned)
+                pbar.update(1)
                 if max_samples and len(cleaned_lines) >= max_samples:
                     break
+    pbar.close()
     return cleaned_lines
 
 
@@ -146,48 +203,11 @@ def load_hf_wikipedia(max_samples: int) -> Iterator[str]:
     try:
         from datasets import load_dataset
         print("[-] Fetching Greek Wikipedia...")
-        ds = load_dataset("wikimedia/wikipedia", "20231101.el", split="train", streaming=True)
-        for item in ds:
-            text = item.get("text", "")
-            # Split article into paragraphs/sentences
-            for line in text.split("\n"):
-                line = line.strip()
-                if line:
-                    yield line
-    except Exception as e:
-        print(f"[!] Warning: Could not load Wikipedia from HF ({e}). Trying fallback...")
-
-
-def load_hf_opensubtitles(max_samples: int) -> Iterator[str]:
-    """Stream dialogues from OpenSubtitles Greek."""
-    try:
-        from datasets import load_dataset
-        print("[-] Fetching OpenSubtitles Greek...")
-        # Try open_subtitles or opus-100 Greek
         try:
-            ds = load_dataset("open_subtitles", lang1="el", lang2="en", split="train", streaming=True)
-            for item in ds:
-                translation = item.get("translation", {})
-                el_text = translation.get("el", "")
-                if el_text:
-                    yield el_text
+            ds = load_dataset("wikimedia/wikipedia", "20231101.el", split="train", streaming=True)
         except Exception:
-            ds = load_dataset("Helsinki-NLP/opus-100", "el-en", split="train", streaming=True)
-            for item in ds:
-                translation = item.get("translation", {})
-                el_text = translation.get("el", "")
-                if el_text:
-                    yield el_text
-    except Exception as e:
-        print(f"[!] Warning: Could not load OpenSubtitles ({e}).")
+            ds = load_dataset("wikipedia", "20220301.el", split="train", streaming=True, trust_remote_code=True)
 
-
-def load_hf_mc4(max_samples: int) -> Iterator[str]:
-    """Stream web text from mC4 / c4 Greek."""
-    try:
-        from datasets import load_dataset
-        print("[-] Fetching mC4/C4 Greek...")
-        ds = load_dataset("allenai/c4", "el", split="train", streaming=True)
         for item in ds:
             text = item.get("text", "")
             for line in text.split("\n"):
@@ -195,22 +215,37 @@ def load_hf_mc4(max_samples: int) -> Iterator[str]:
                 if line:
                     yield line
     except Exception as e:
-        print(f"[!] Warning: Could not load mC4 ({e}).")
+        print(f"[!] Warning: Could not load Wikipedia from HF ({e}).")
 
 
-def load_hf_tatoeba(max_samples: int) -> Iterator[str]:
-    """Stream colloquial sentences from Tatoeba Greek."""
+def load_hf_conversational(max_samples: int) -> Iterator[str]:
+    """Stream dialogues from Opus-100 Greek (subtitles, conversation, movies)."""
+    from datasets import load_dataset
+    print("[-] Fetching Conversational Dialogue dataset (Helsinki-NLP/opus-100)...")
     try:
-        from datasets import load_dataset
-        print("[-] Fetching Tatoeba Greek...")
-        ds = load_dataset("Helsinki-NLP/tatoeba_train", "ell-eng", split="train", streaming=True)
+        ds = load_dataset("Helsinki-NLP/opus-100", "el-en", split="train", streaming=True)
         for item in ds:
             translation = item.get("translation", {})
-            el_text = translation.get("ell", "")
+            el_text = translation.get("el", "")
             if el_text:
                 yield el_text
     except Exception as e:
-        print(f"[!] Warning: Could not load Tatoeba ({e}).")
+        print(f"[!] Warning: Could not load Opus-100 ({e})")
+
+
+def load_hf_literature(max_samples: int) -> Iterator[str]:
+    """Stream literary prose from Opus Books Greek."""
+    from datasets import load_dataset
+    print("[-] Fetching Literature & Prose dataset (Helsinki-NLP/opus_books)...")
+    try:
+        ds = load_dataset("Helsinki-NLP/opus_books", "el-en", split="train", streaming=True)
+        for item in ds:
+            translation = item.get("translation", {})
+            el_text = translation.get("el", "")
+            if el_text:
+                yield el_text
+    except Exception as e:
+        print(f"[!] Warning: Could not load Opus Books ({e})")
 
 
 def load_local_raw_files(raw_dir: Path) -> Iterator[str]:
@@ -277,12 +312,12 @@ def main():
                         help="Directory to save train.txt, val.txt, test.txt")
     parser.add_argument("--raw_dir", type=str, default="data/raw",
                         help="Directory containing optional local raw text files")
-    parser.add_argument("--max_subtitles", type=int, default=500000,
-                        help="Target sample count for OpenSubtitles / Tatoeba (Conversational)")
-    parser.add_argument("--max_wiki", type=int, default=200000,
-                        help="Target sample count for Wikipedia (Informational)")
-    parser.add_argument("--max_mc4", type=int, default=200000,
-                        help="Target sample count for mC4 (Web text)")
+    parser.add_argument("--max_conv", type=int, default=200000,
+                        help="Target sample count for Conversational Dialogue (Opus-100)")
+    parser.add_argument("--max_lit", type=int, default=30000,
+                        help="Target sample count for Literature & Books (Opus Books)")
+    parser.add_argument("--max_wiki", type=int, default=70000,
+                        help="Target sample count for Greek Wikipedia")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--skip_download", action="store_true",
                         help="Skip online datasets and process only local raw_dir")
@@ -298,38 +333,51 @@ def main():
     all_cleaned_data: List[str] = []
 
     print("=" * 60)
-    print("Greek Keyboard LM - Data Ingestion & Cleaning Pipeline")
+    print("Greek Keyboard LM - Curated Dataset Ingestion Pipeline")
+    print("Blend: Conversational (70%) + Literature (10%) + Wikipedia (20%)")
     print("=" * 60)
 
     # 1. Local files
     local_stream = load_local_raw_files(raw_path)
-    local_cleaned = process_text_stream(local_stream, seen_hashes)
+    local_cleaned = process_text_stream(local_stream, seen_hashes, desc="Local Files")
     if local_cleaned:
         print(f"[+] Loaded {len(local_cleaned):,} lines from local raw directory.")
         all_cleaned_data.extend(local_cleaned)
 
     # 2. Online datasets if not skipped
     if not args.skip_download:
-        # A. Conversational (~60%)
-        print("\n--- 1/3 Ingesting Conversational Sources (OpenSubtitles & Tatoeba) ---")
-        tatoeba_cleaned = process_text_stream(load_hf_tatoeba(args.max_subtitles // 4), seen_hashes, args.max_subtitles // 4)
-        subtitles_cleaned = process_text_stream(load_hf_opensubtitles(args.max_subtitles), seen_hashes, args.max_subtitles)
-        conversational_total = len(tatoeba_cleaned) + len(subtitles_cleaned)
-        print(f"[+] Cleaned Conversational Lines: {conversational_total:,}")
-        all_cleaned_data.extend(tatoeba_cleaned)
-        all_cleaned_data.extend(subtitles_cleaned)
+        # A. Conversational (~70%)
+        print("\n--- 1/3 Ingesting Conversational Dialogue (Opus-100) ---")
+        conv_cleaned = process_text_stream(
+            load_hf_conversational(args.max_conv),
+            seen_hashes,
+            max_samples=args.max_conv,
+            desc="Conversational"
+        )
+        print(f"[+] Cleaned Conversational Lines: {len(conv_cleaned):,}")
+        all_cleaned_data.extend(conv_cleaned)
 
-        # B. Wikipedia (~20%)
-        print("\n--- 2/3 Ingesting Informational Sources (Greek Wikipedia) ---")
-        wiki_cleaned = process_text_stream(load_hf_wikipedia(args.max_wiki), seen_hashes, args.max_wiki)
+        # B. Literature (~10%)
+        print("\n--- 2/3 Ingesting Literature & Prose (Opus Books) ---")
+        lit_cleaned = process_text_stream(
+            load_hf_literature(args.max_lit),
+            seen_hashes,
+            max_samples=args.max_lit,
+            desc="Literature"
+        )
+        print(f"[+] Cleaned Literature Lines: {len(lit_cleaned):,}")
+        all_cleaned_data.extend(lit_cleaned)
+
+        # C. Wikipedia (~20%)
+        print("\n--- 3/3 Ingesting Informational Articles (Greek Wikipedia) ---")
+        wiki_cleaned = process_text_stream(
+            load_hf_wikipedia(args.max_wiki),
+            seen_hashes,
+            max_samples=args.max_wiki,
+            desc="Wikipedia"
+        )
         print(f"[+] Cleaned Wikipedia Lines: {len(wiki_cleaned):,}")
         all_cleaned_data.extend(wiki_cleaned)
-
-        # C. mC4 / Web (~20%)
-        print("\n--- 3/3 Ingesting Clean Web Sources (mC4 Greek) ---")
-        mc4_cleaned = process_text_stream(load_hf_mc4(args.max_mc4), seen_hashes, args.max_mc4)
-        print(f"[+] Cleaned mC4 Lines: {len(mc4_cleaned):,}")
-        all_cleaned_data.extend(mc4_cleaned)
 
     # Fallback if no data collected (e.g., completely offline)
     if len(all_cleaned_data) == 0:
@@ -382,6 +430,7 @@ def main():
         json.dump(stats, f, indent=2, ensure_ascii=False)
 
     print(f"[✓] Data preparation complete. Statistics saved to {meta_file}")
+    sys.exit(0)
 
 
 if __name__ == "__main__":

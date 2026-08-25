@@ -35,6 +35,12 @@ output/
 *.log
 .cache/
 
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+*.env
+
 # IDE
 .idea/
 .vscode/
