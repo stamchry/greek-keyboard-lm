@@ -499,7 +499,7 @@ def main():
         json.dump(stats, f, indent=2, ensure_ascii=False)
 
     print(f"[✓] Data preparation complete. Statistics saved to {meta_file}")
-    sys.exit(0)
+    os._exit(0)
 
 
 if __name__ == "__main__":
