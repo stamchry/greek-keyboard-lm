@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/futo-org/futo-keyboard-models/main/schema.json",
+  "name": "Greek Transformer Language Model",
+  "version": 1,
+  "description": "Modern Greek (el) predictive text and autocorrect Transformer LM for FUTO Android Keyboard",
+  "author": "Community",
+  "license": "Apache-2.0",
+  "languages": ["el"],
+  "models": [
+    {
+      "id": "el_keyboard_Q6_K",
+      "name": "Greek Keyboard LM (Q6_K)",
+      "filename": "el_keyboard_Q6_K.gguf",
+      "quantization": "Q6_K",
+      "filesize_bytes": 21000000,
+      "parameters": "22.8M",
+      "context_window": 256,
+      "features": [
+        "base_v1",
+        "inverted_space",
+        "xbu_char_autocorrect_v1",
+        "lora_finetunable_v1"
+      ],
+      "url": "https://huggingface.co/futo-keyboard/greek-keyboard-lm/resolve/main/el_keyboard_Q6_K.gguf"
+    },
+    {
+      "id": "el_keyboard_Q8_0",
+      "name": "Greek Keyboard LM (Q8_0)",
+      "filename": "el_keyboard_Q8_0.gguf",
+      "quantization": "Q8_0",
+      "filesize_bytes": 26000000,
+      "parameters": "22.8M",
+      "context_window": 256,
+      "features": [
+        "base_v1",
+        "inverted_space",
+        "xbu_char_autocorrect_v1",
+        "lora_finetunable_v1"
+      ],
+      "url": "https://huggingface.co/futo-keyboard/greek-keyboard-lm/resolve/main/el_keyboard_Q8_0.gguf"
+    }
+  ]
+}

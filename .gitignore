@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Data and Checkpoints
+data/
+raw_data/
+models/
+checkpoints/
+output/
+*.gguf
+*.model
+*.vocab
+*.log
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
