@@ -74,6 +74,19 @@ RE_ADMIN_JUNK = re.compile(
     r'πρωτοδικεί|ειρηνοδικεί|συμβολαιογράφ|δελτίο τύπου|διάμετρος/διαδρομή)'
 )
 
+# Wikipedia Almanac date lists (births/deaths lists: "14 Ιανουαρίου - ...", "1990 – ...")
+RE_WIKI_ALMANAC_DATE = re.compile(
+    r'^\s*(?:\d{1,2}\s+(?:Ιανουαρίου|Φεβρουαρίου|Μαρτίου|Απριλίου|Μαΐου|Ιουνίου|'
+    r'Ιουλίου|Αυγούστου|Σεπτεμβρίου|Οκτωβρίου|Νοεμβρίου|Δεκεμβρίου)|\d{3,4})\s*[-–—:]',
+    re.IGNORECASE
+)
+
+# Wikipedia Disambiguation / Navigation boilerplate
+RE_WIKI_DISAMBIG = re.compile(
+    r'(?i)(?:μπορεί να αναφέρεται|δείτε επίσης|εξωτερικοί σύνδεσμοι|βιβλιογραφία|'
+    r'παραπομπές|σχετικά άρθρα|κύριο λήμμα|σημειώσεις και παραπομπές)'
+)
+
 # Repeated characters (e.g. "αααα", "!!!!!")
 RE_REPEATED_CHARS = re.compile(r'(.)\1{3,}')
 
@@ -150,6 +163,14 @@ def clean_text_line(line: str) -> Optional[str]:
 
     # Check for administrative dumps, gazettes, electoral tables
     if RE_ADMIN_JUNK.search(line):
+        return None
+
+    # Discard Wikipedia almanac date bullets ("14 Ιανουαρίου - Έντινσον Καβάνι, ...")
+    if RE_WIKI_ALMANAC_DATE.search(line):
+        return None
+
+    # Discard Wikipedia navigation / disambiguation boilerplate
+    if RE_WIKI_DISAMBIG.search(line):
         return None
 
     # Strip hearing-impaired tags and sound notations
