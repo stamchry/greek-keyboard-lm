@@ -187,6 +187,14 @@ def clean_text_line(line: str) -> Optional[str]:
     line = line.replace('«', '"').replace('»', '"').replace('“', '"').replace('”', '"')
     line = line.replace('’', "'").replace('`', "'")
 
+    # Normalize unicode ellipsis and excessive dots
+    line = line.replace('…', '...')
+    line = re.sub(r'\.{3,}', '...', line)
+    # Ensure space after ellipsis if followed by a character (e.g. "μου...μόλις" -> "μου... μόλις")
+    line = re.sub(r'\.\.\.([^\s\.\,\!\?\"\';»\)])', r'... \1', line)
+    # Ensure no leading whitespace before ellipsis (e.g. "λέξη ... " -> "λέξη... ")
+    line = re.sub(r'\s+\.\.\.', '...', line)
+
     # Collapse multiple whitespaces
     line = RE_WHITESPACE.sub(' ', line).strip()
 
