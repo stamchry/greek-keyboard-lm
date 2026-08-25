@@ -50,26 +50,51 @@ flowchart TD
 
 ---
 
-## 2. Installation & Setup
+---
 
-Ensure you are using Python 3.10+:
+## 2. Repository Structure
 
-```bash
-# Clone repository
-git clone https://github.com/stamchry/greek-keyboard-lm.git
-cd greek-keyboard-lm
-
-# Activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+```text
+greek-keyboard-lm/
+├── 01_download_and_clean_data.py   # 1. Dataset streaming, cleaning, and QA splitting
+├── 02_inspect_data.py              # 2. Diagnostic audit & monotonic accent compliance
+├── 03_train_sentencepiece.py       # 3. SentencePiece Unigram trainer (15,008 vocab)
+├── 04_generate_corruptions.py      # 4. Synthetic Greek typo & iotacism corruption engine
+├── 05_train_model.py               # 5. 22.8M parameter mini-LLaMA PyTorch trainer
+├── 06_export_to_gguf.py            # 6. GGUF exporter with embedded FUTO metadata & tokenizer
+├── 07_evaluate_model.py            # 7. Benchmarks (PPL, Top-k, Accents) & Interactive REPL
+├── models.json                     # FUTO Keyboard catalog manifest
+├── requirements.txt                # Python dependencies
+├── .env.example                    # Hugging Face authentication token template
+└── README.md                       # Documentation
 ```
 
 ---
 
-## 3. Pipeline Execution Guide
+## 3. Installation & Setup
+
+Ensure you are using Python 3.10+:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/stamchry/greek-keyboard-lm.git
+cd greek-keyboard-lm
+
+# 2. Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Optional: Configure Hugging Face Token for faster streaming
+cp .env.example .env
+# Edit .env and paste your token: HF_TOKEN=hf_...
+```
+
+---
+
+## 4. Pipeline Execution Guide
 
 ### Step 1: Download and Clean Greek Datasets
 Ingests Opus-100 dialogues, Opus Books literature, and Greek Wikipedia. Strips subtitle timing cues, hearing-impaired tags, speaker markers, HTML, boilerplate, applies $\ge 85\%$ Greek character ratio filtering, normalizes Greek Unicode lookalikes (`ß` $\to$ `β`, `µ` $\to$ `μ`), and deduplicates lines.
