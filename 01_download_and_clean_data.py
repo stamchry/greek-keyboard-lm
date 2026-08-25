@@ -179,21 +179,31 @@ def clean_text_line(line: str) -> Optional[str]:
     # Strip speaker prefixes
     line = RE_SPEAKER_PREFIX.sub('', line)
 
-    # Normalize unicode (NFC)
-    line = unicodedata.normalize('NFC', line)
+    # Strip leading list numbering (e.g. "1) ", "4. ", "(a) ")
+    line = re.sub(r'^\s*(?:\d{1,2}[.)\]]|\([0-9a-zA-Z]\))\s+', '', line)
 
     # Normalize Greek punctuation (standardize on Greek question mark ;)
-    line = line.replace(';', ';').replace(';', ';')
+    line = line.replace(';', ';').replace(';', ';').replace('?', ';')
     line = line.replace('«', '"').replace('»', '"').replace('“', '"').replace('”', '"')
     line = line.replace('’', "'").replace('`', "'")
 
-    # Normalize unicode ellipsis and excessive dots
+    # Discard Wikipedia calendar template sentences ("Η 16η Μαρτίου είναι η 75η ημέρα...")
+    if re.search(r'ημέρα του έτους κατά το (?:Γρηγοριανό|Ιουλιανό) ημερολόγιο', line, re.IGNORECASE):
+        return None
+
+    # Normalize unicode ellipsis and 2+ dots to standard ellipsis '...'
     line = line.replace('…', '...')
-    line = re.sub(r'\.{3,}', '...', line)
+    line = re.sub(r'\.{2,}', '...', line)
     # Ensure space after ellipsis if followed by a character (e.g. "μου...μόλις" -> "μου... μόλις")
     line = re.sub(r'\.\.\.([^\s\.\,\!\?\"\';»\)])', r'... \1', line)
     # Ensure no leading whitespace before ellipsis (e.g. "λέξη ... " -> "λέξη... ")
     line = re.sub(r'\s+\.\.\.', '...', line)
+
+    # Remove unwanted whitespace before standard punctuation marks: "λέξη ." -> "λέξη."
+    line = re.sub(r'\s+([.,;:!?])', r'\1', line)
+
+    # Strip trailing dangling punctuation (e.g. trailing commas, hyphens, colons)
+    line = re.sub(r'[\,\:\-–—\s]+$', '', line).strip()
 
     # Collapse multiple whitespaces
     line = RE_WHITESPACE.sub(' ', line).strip()
