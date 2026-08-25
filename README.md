@@ -10,24 +10,24 @@ This repository contains the complete end-to-end Python pipeline to gather datas
 
 ```mermaid
 flowchart TD
-    subgraph 1. Data & QA Pipeline
-        A[Data Sources: OpenSubtitles, Wikipedia, mC4, Tatoeba] --> B[01_download_and_clean_data.py]
-        B --> C[02_inspect_data.py Diagnostic Audit]
+    subgraph S1["1. Data & QA Pipeline"]
+        A["Data Sources: Opus-100, Opus Books, Greek Wikipedia"] --> B["01_download_and_clean_data.py"]
+        B --> C["02_inspect_data.py Diagnostic Audit"]
     end
 
-    subgraph 2. Tokenizer & Synthetic Corruptions
-        C --> D[03_train_sentencepiece.py\nVocab: 15,008 | treat_whitespace_as_suffix=True]
-        C --> E[04_generate_corruptions.py\nAccents 50%, Adjacency 30%, Homophones 10%, Typo Dynamics 10%]
+    subgraph S2["2. Tokenizer & Synthetic Corruptions"]
+        C --> D["03_train_sentencepiece.py<br/>Vocab: 15,008 / treat_whitespace_as_suffix=True"]
+        C --> E["04_generate_corruptions.py<br/>Accents 50%, Adjacency 30%, Homophones 10%, Typo 10%"]
     end
 
-    subgraph 3. Training & Deployment
-        D --> F[05_train_model.py\n22M Mini-LLaMA: 70% Clean + 30% Autocorrect]
+    subgraph S3["3. Training & Deployment"]
+        D --> F["05_train_model.py<br/>22.8M Mini-LLaMA: 70% Clean + 30% Autocorrect"]
         E --> F
-        F --> G[06_export_to_gguf.py\nInject FUTO Metadata & Tokenizer Binary]
+        F --> G["06_export_to_gguf.py<br/>Inject FUTO Metadata & Tokenizer Binary"]
         D --> G
-        G --> H[07_evaluate_model.py\nPerplexity & Accent Benchmark]
-        G --> I[Quantize: Q6_K & Q8_0]
-        I --> J[Import into FUTO Keyboard APK]
+        G --> H["07_evaluate_model.py<br/>Perplexity & Accent Benchmark"]
+        G --> I["Quantize: Q6_K & Q8_0"]
+        I --> J["Import into FUTO Keyboard APK"]
     end
 ```
 
@@ -52,11 +52,11 @@ flowchart TD
 
 ## 2. Installation & Setup
 
-Ensure you are using Python 3.10+ (or Python 3.14):
+Ensure you are using Python 3.10+:
 
 ```bash
 # Clone repository
-git clone https://github.com/stamatis/greek-keyboard-lm.git
+git clone https://github.com/stamchry/greek-keyboard-lm.git
 cd greek-keyboard-lm
 
 # Activate virtual environment
@@ -72,14 +72,14 @@ pip install -r requirements.txt
 ## 3. Pipeline Execution Guide
 
 ### Step 1: Download and Clean Greek Datasets
-Ingests OpenSubtitles, Tatoeba, Greek Wikipedia, and mC4 web text. Strips subtitle timing cues, hearing-impaired tags, speaker markers, HTML, boilerplate, applies $\ge 85\%$ Greek character ratio filtering, and deduplicates lines.
+Ingests Opus-100 dialogues, Opus Books literature, and Greek Wikipedia. Strips subtitle timing cues, hearing-impaired tags, speaker markers, HTML, boilerplate, applies $\ge 85\%$ Greek character ratio filtering, normalizes Greek Unicode lookalikes (`ß` $\to$ `β`, `µ` $\to$ `μ`), and deduplicates lines.
 
 ```bash
 python3 01_download_and_clean_data.py \
     --output_dir data/processed \
-    --max_subtitles 500000 \
-    --max_wiki 200000 \
-    --max_mc4 200000
+    --max_conv 200000 \
+    --max_lit 30000 \
+    --max_wiki 70000
 ```
 
 Outputs:
