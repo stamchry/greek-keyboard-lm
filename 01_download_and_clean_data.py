@@ -78,6 +78,36 @@ RE_ADMIN_JUNK = re.compile(
 RE_REPEATED_CHARS = re.compile(r'(.)\1{3,}')
 
 
+# Latin to Greek Homoglyph Map for words containing Greek characters
+LATIN_TO_GREEK_HOMOGLYPHS = {
+    'A': 'Α', 'B': 'Β', 'E': 'Ε', 'H': 'Η', 'I': 'Ι', 'K': 'Κ',
+    'M': 'Μ', 'N': 'Ν', 'O': 'Ο', 'P': 'Ρ', 'T': 'Τ', 'X': 'Χ',
+    'Y': 'Υ', 'Z': 'Ζ',
+    'a': 'α', 'e': 'ε', 'i': 'ι', 'o': 'ο', 'p': 'ρ', 'v': 'ν',
+    'x': 'χ', 'y': 'υ', 'w': 'ω'
+}
+
+RE_MIXED_SCRIPT = re.compile(r'[α-ωάέήίόύώϊϋΐΰΑ-ΩΆΈΉΊΌΎΏΪΫ][a-zA-Z]|[a-zA-Z][α-ωάέήίόύώϊϋΐΰΑ-ΩΆΈΉΊΌΎΏΪΫ]')
+
+
+def fix_word_homoglyphs(word: str) -> str:
+    """Normalize Latin lookalike characters (v->ν, o->ο, M->Μ, pi->π) inside Greek words."""
+    clean_w = word.strip(".,;:!?\"'()«»[]{} -—")
+    has_greek = any(0x0370 <= ord(c) <= 0x03FF or 0x1F00 <= ord(c) <= 0x1FFF for c in clean_w)
+    if not has_greek:
+        return word  # Keep pure Latin words (e.g. WiFi, DNA, Google)
+
+    # Fix 'pi' / 'Pi' artifact (broken OCR / font encoding)
+    fixed = word.replace('pi', 'π').replace('Pi', 'Π')
+    result = []
+    for c in fixed:
+        if c in LATIN_TO_GREEK_HOMOGLYPHS:
+            result.append(LATIN_TO_GREEK_HOMOGLYPHS[c])
+        else:
+            result.append(c)
+    return ''.join(result)
+
+
 def is_greek_char(char: str) -> bool:
     """Check if character is in Greek Unicode ranges."""
     code = ord(char)
@@ -147,8 +177,18 @@ def clean_text_line(line: str) -> Optional[str]:
     if RE_REPEATED_CHARS.search(line):
         return None
 
-    # Length constraints: between 3 and 40 words
+    # Homoglyph repair on individual words (e.g. vα -> να, Mπoρεί -> Μπορεί, pi -> π)
     words = line.split()
+    words = [fix_word_homoglyphs(w) for w in words]
+    line = ' '.join(words)
+
+    # Discard line if any word still has mixed Greek and Latin scripts (e.g. unfixable OCR errors)
+    for w in words:
+        clean_w = w.strip(".,;:!?\"'()«»[]{} -—")
+        if RE_MIXED_SCRIPT.search(clean_w):
+            return None
+
+    # Length constraints: between 3 and 40 words
     if len(words) < 3 or len(words) > 40:
         return None
 
