@@ -91,6 +91,21 @@ RE_WIKI_DISAMBIG = re.compile(
 RE_REPEATED_CHARS = re.compile(r'(.)\1{3,}')
 
 
+# Unicode lookalikes and math symbol variants to canonical Greek letters
+GREEK_SYMBOL_NORMALIZATION = {
+    '\u00DF': 'β',  # ß (German Sharp S / Eszett) -> β
+    '\u00B5': 'μ',  # µ (Micro Sign) -> μ
+    '\u03D0': 'β',  # ϐ (Greek Beta Symbol) -> β
+    '\u03D1': 'θ',  # ϑ (Greek Theta Symbol) -> θ
+    '\u03D2': 'Υ',  # ϒ (Greek Upsilon with Hook) -> Υ
+    '\u03D5': 'φ',  # ϕ (Greek Phi Symbol) -> φ
+    '\u03D6': 'π',  # ϖ (Greek Pi Symbol) -> π
+    '\u03F0': 'κ',  # ϰ (Greek Kappa Symbol) -> κ
+    '\u03F1': 'ρ',  # ϱ (Greek Rho Symbol) -> ρ
+    '\u03F4': 'Θ',  # ϴ (Greek Capital Theta Symbol) -> Θ
+    '\u03F5': 'ε',  # ϵ (Greek Lunate Epsilon Symbol) -> ε
+}
+
 # Latin to Greek Homoglyph Map for words containing Greek characters
 LATIN_TO_GREEK_HOMOGLYPHS = {
     'A': 'Α', 'B': 'Β', 'E': 'Ε', 'H': 'Η', 'I': 'Ι', 'K': 'Κ',
@@ -147,6 +162,10 @@ def clean_text_line(line: str) -> Optional[str]:
 
     # Unescape HTML entities
     line = html.unescape(line)
+
+    # Normalize Greek lookalikes and math symbol variants (ß -> β, µ -> μ, ϑ -> θ, etc.)
+    for sym_char, greek_char in GREEK_SYMBOL_NORMALIZATION.items():
+        line = line.replace(sym_char, greek_char)
 
     # Strip URLs and emails
     line = RE_URL.sub('', line)
