@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import sentencepiece as spm
+from tqdm import tqdm
 from transformers import LlamaConfig, LlamaForCausalLM, get_cosine_schedule_with_warmup
 
 # Import GreekCorrupter from 04_generate_corruptions
@@ -213,8 +214,12 @@ def train(
     intermediate_size: int = 1376,
     tie_embeddings: bool = True,
     num_workers: int = 2,
+    num_threads: Optional[int] = 16,
+    resume_from: Optional[str] = None,
     seed: int = 42
 ):
+    if num_threads is not None and num_threads > 0:
+        torch.set_num_threads(num_threads)
     torch.manual_seed(seed)
     random.seed(seed)
 
@@ -233,7 +238,7 @@ def train(
         device = torch.device("cpu")
         amp_dtype = torch.float32
         use_amp = False
-        print(f"[+] Using CPU device (Threads: {torch.get_num_threads()})")
+        print(f"[+] Using CPU device (Active Threads: {torch.get_num_threads()})")
 
     sp_model_file = tokenizer_dir / "tokenizer.model"
     if not sp_model_file.exists():
@@ -275,15 +280,20 @@ def train(
     sp.Load(str(sp_model_file))
     vocab_size = sp.GetPieceSize()
 
-    config = build_llama_mini_config(
-        vocab_size=vocab_size,
-        max_position_embeddings=max_seq_len,
-        num_hidden_layers=num_layers,
-        hidden_size=hidden_size,
-        intermediate_size=intermediate_size,
-        tie_word_embeddings=tie_embeddings
-    )
-    model = LlamaForCausalLM(config).to(device)
+    if resume_from and Path(resume_from).exists():
+        print(f"[+] Resuming model weights from checkpoint: {resume_from}")
+        model = LlamaForCausalLM.from_pretrained(str(resume_from)).to(device)
+        config = model.config
+    else:
+        config = build_llama_mini_config(
+            vocab_size=vocab_size,
+            max_position_embeddings=max_seq_len,
+            num_hidden_layers=num_layers,
+            hidden_size=hidden_size,
+            intermediate_size=intermediate_size,
+            tie_word_embeddings=tie_embeddings
+        )
+        model = LlamaForCausalLM(config).to(device)
 
     total_params, trainable_params = count_parameters(model)
     print("=" * 60)
@@ -419,6 +429,8 @@ def main():
     parser.add_argument("--intermediate_size", type=int, default=1376, help="SwiGLU intermediate dimension (default: 1376)")
     parser.add_argument("--untie_embeddings", action="store_true", help="Untie input embedding and lm_head weights")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
+    parser.add_argument("--num_threads", type=int, default=16, help="Max CPU threads to use for PyTorch (default: 16)")
+    parser.add_argument("--resume_from", type=str, default=None, help="Path to checkpoint directory to resume from")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
 
@@ -441,6 +453,8 @@ def main():
         intermediate_size=args.intermediate_size,
         tie_embeddings=not args.untie_embeddings,
         num_workers=args.num_workers,
+        num_threads=args.num_threads,
+        resume_from=args.resume_from,
         seed=args.seed
     )
 

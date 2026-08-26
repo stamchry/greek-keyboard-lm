@@ -14,6 +14,7 @@ import json
 import shutil
 import argparse
 from pathlib import Path
+from typing import Tuple, List, Dict, Optional
 import sentencepiece as spm
 
 

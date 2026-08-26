@@ -20,7 +20,7 @@ import argparse
 import unicodedata
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List, Tuple, Set, Optional
 
 
 # Greek vowel definitions

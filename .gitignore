@@ -33,9 +33,11 @@ output/
 *.model
 *.vocab
 *.log
+*.png
 .cache/
 
 # Environment variables & secrets
+HANDOUT.md
 .env
 .env.local
 .env.*.local
