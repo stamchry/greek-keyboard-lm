@@ -238,7 +238,8 @@ def quantize_gguf(input_gguf: Path, output_dir: Path):
 
     print("\n[-] Quantizing GGUF models...")
     for q_type in q_types:
-        out_name = output_dir / f"{input_gguf.stem}_{q_type}.gguf"
+        base_stem = input_gguf.stem.replace("_f16", "").replace("_f32", "")
+        out_name = output_dir / f"{base_stem}_{q_type}.gguf"
         cmd = [quantize_bin, str(input_gguf), str(out_name), q_type]
         print(f"[-] Running: {' '.join(cmd)}")
         res = subprocess.run(cmd)
