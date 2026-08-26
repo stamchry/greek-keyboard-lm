@@ -1,12 +1,12 @@
 # Greek Transformer Language Model for FUTO Keyboard
 
-Custom Modern Greek (`el`) predictive text and autocorrect Transformer Language Model (~22.8M parameters) built for the **FUTO Android Keyboard**.
+Custom Modern Greek (`el`) predictive text and autocorrect Transformer Language Model (~36.1M parameters) built for the **FUTO Android Keyboard**.
 
 ---
 
 ## 1. Overview & Architecture
 
-This repository contains the complete end-to-end Python pipeline to gather datasets, train a SentencePiece tokenizer, train a compact LLaMA causal language model, inject FUTO custom metadata, and export/quantize GGUF models for mobile on-device inference.
+This repository contains the complete end-to-end Python pipeline to gather datasets, train a SentencePiece tokenizer, train a compact LLaMA causal language model matching FUTO's official 36M specification, inject FUTO custom metadata, and export/quantize GGUF models for mobile on-device inference.
 
 ```mermaid
 flowchart TD
@@ -21,7 +21,7 @@ flowchart TD
     end
 
     subgraph S3["3. Training & Deployment"]
-        D --> F["05_train_model.py<br/>22.8M Mini-LLaMA: 70% Clean + 30% Autocorrect"]
+        D --> F["05_train_model.py<br/>36.1M Mini-LLaMA: 70% Clean + 30% Autocorrect"]
         E --> F
         F --> G["06_export_to_gguf.py<br/>Inject FUTO Metadata & Tokenizer Binary"]
         D --> G
@@ -36,19 +36,18 @@ flowchart TD
 | Parameter | Value | Description / Rationale |
 | :--- | :--- | :--- |
 | **Model Family** | `LlamaForCausalLM` | Supported by FUTO's embedded GGML runtime |
-| **Parameters** | $\approx 22.8\text{M}$ | Real-time low latency (<20ms) on mobile CPUs |
+| **Total Parameters** | $\approx 36.15\text{M}$ | Matches official FUTO Keyboard standard model profile |
 | **Hidden Size ($d_{\text{model}}$)** | `512` | Standard FUTO mini-LLaMA dimension |
-| **Hidden Layers** | `10` | Balances representation capacity and battery consumption |
+| **Hidden Layers** | `9` | Optimized balance between capacity and latency |
 | **Attention Heads** | `8` | Head dimension of 64 |
 | **Intermediate Size** | `1376` | SwiGLU projection |
+| **Tied Word Embeddings** | `True` | Weight-sharing between input embedding and lm_head |
 | **Max Context Window** | `256` tokens | Fits keyboard fast-forward context buffer |
 | **Tokenizer** | SentencePiece (Unigram) | Required by FUTO runtime |
 | **Tokenizer Flags** | `treat_whitespace_as_suffix=True` | **Mandatory** for keystroke prefix matching |
 | **Vocabulary Size** | `15,008` tokens | Compact embedding table (~8MB) and fast softmax |
 | **Control Tokens** | `<XBU>`, `<XBC>`, `<XEC>` | Autocorrect protocol: `[Ctx] <XBU>error<XBC>target<XEC>` |
-| **Quantization** | `Q6_K` (~20MB) & `Q8_0` (~26MB) | Memory-efficient for mobile RAM |
-
----
+| **Quantization** | `Q6_K` (~22MB) & `Q8_0` (~27MB) | Memory-efficient for mobile RAM |
 
 ---
 
@@ -60,7 +59,7 @@ greek-keyboard-lm/
 ├── 02_inspect_data.py              # 2. Diagnostic audit & monotonic accent compliance
 ├── 03_train_sentencepiece.py       # 3. SentencePiece Unigram trainer (15,008 vocab)
 ├── 04_generate_corruptions.py      # 4. Synthetic Greek typo & iotacism corruption engine
-├── 05_train_model.py               # 5. 22.8M parameter mini-LLaMA PyTorch trainer
+├── 05_train_model.py               # 5. 36.1M parameter mini-LLaMA PyTorch trainer
 ├── 06_export_to_gguf.py            # 6. GGUF exporter with embedded FUTO metadata & tokenizer
 ├── 07_evaluate_model.py            # 7. Benchmarks (PPL, Top-k, Accents) & Interactive REPL
 ├── models.json                     # FUTO Keyboard catalog manifest
@@ -159,8 +158,8 @@ python3 04_generate_corruptions.py \
 
 ---
 
-### Step 5: Train 22M LLaMA Model
-Trains the custom 22M parameter LLaMA model using PyTorch, dynamically mixing 70% clean next-token sequences and 30% autocorrect prompts with AdamW and cosine decay.
+### Step 5: Train ~36M LLaMA Model
+Trains the custom 36.1M parameter LLaMA model using PyTorch, dynamically mixing 70% clean next-token sequences and 30% autocorrect prompts with AdamW and cosine decay.
 
 ```bash
 python3 05_train_model.py \

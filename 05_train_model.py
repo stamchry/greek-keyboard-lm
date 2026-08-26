@@ -126,22 +126,32 @@ class GreekKeyboardDataset(Dataset):
         }
 
 
-def build_llama_mini_config(vocab_size: int = 15008, max_position_embeddings: int = 256) -> LlamaConfig:
+def build_llama_mini_config(
+    vocab_size: int = 15008,
+    max_position_embeddings: int = 256,
+    num_hidden_layers: int = 9,
+    hidden_size: int = 512,
+    intermediate_size: int = 1376,
+    num_attention_heads: int = 8,
+    tie_word_embeddings: bool = True
+) -> LlamaConfig:
     """
-    Constructs the 22M parameter LLaMA configuration matching FUTO specifications:
+    Constructs the official ~36M parameter LLaMA configuration matching FUTO specifications:
     - hidden_size = 512
-    - num_hidden_layers = 10
-    - num_attention_heads = 8
+    - num_hidden_layers = 9
+    - num_attention_heads = 8 (head_dim = 64)
     - intermediate_size = 1376 (SwiGLU)
     - max_position_embeddings = 256
+    - tie_word_embeddings = True
+    - Total parameters = ~36.15M
     """
     return LlamaConfig(
         vocab_size=vocab_size,
-        hidden_size=512,
-        intermediate_size=1376,
-        num_hidden_layers=10,
-        num_attention_heads=8,
-        num_key_value_heads=8,
+        hidden_size=hidden_size,
+        intermediate_size=intermediate_size,
+        num_hidden_layers=num_hidden_layers,
+        num_attention_heads=num_attention_heads,
+        num_key_value_heads=num_attention_heads,
         hidden_act="silu",
         max_position_embeddings=max_position_embeddings,
         initializer_range=0.02,
@@ -150,7 +160,7 @@ def build_llama_mini_config(vocab_size: int = 15008, max_position_embeddings: in
         pad_token_id=3,
         bos_token_id=1,
         eos_token_id=2,
-        tie_word_embeddings=False
+        tie_word_embeddings=tie_word_embeddings
     )
 
 
@@ -198,6 +208,10 @@ def train(
     eval_every_steps: int = 250,
     save_every_steps: int = 500,
     max_seq_len: int = 256,
+    num_layers: int = 9,
+    hidden_size: int = 512,
+    intermediate_size: int = 1376,
+    tie_embeddings: bool = True,
     num_workers: int = 2,
     seed: int = 42
 ):
@@ -261,16 +275,24 @@ def train(
     sp.Load(str(sp_model_file))
     vocab_size = sp.GetPieceSize()
 
-    config = build_llama_mini_config(vocab_size=vocab_size, max_position_embeddings=max_seq_len)
+    config = build_llama_mini_config(
+        vocab_size=vocab_size,
+        max_position_embeddings=max_seq_len,
+        num_hidden_layers=num_layers,
+        hidden_size=hidden_size,
+        intermediate_size=intermediate_size,
+        tie_word_embeddings=tie_embeddings
+    )
     model = LlamaForCausalLM(config).to(device)
 
     total_params, trainable_params = count_parameters(model)
     print("=" * 60)
-    print(f"Model Architecture: Mini-LLaMA for Greek Keyboard")
+    print(f"Model Architecture: ~36M Mini-LLaMA for FUTO Greek Keyboard")
     print(f"- Total Parameters: {total_params:,} (~{total_params/1e6:.2f}M)")
     print(f"- Trainable Parameters: {trainable_params:,}")
     print(f"- Layers: {config.num_hidden_layers}, Hidden Size: {config.hidden_size}, Heads: {config.num_attention_heads}")
     print(f"- Intermediate Size: {config.intermediate_size}, Vocab Size: {config.vocab_size}")
+    print(f"- Tied Embeddings: {config.tie_word_embeddings}")
     print("=" * 60)
 
     # Optimizer & Scheduler
@@ -299,25 +321,23 @@ def train(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     best_model_path = output_path / "best_model"
+
     best_val_loss = float("inf")
-
     global_step = 0
-    start_time = time.time()
 
-    print(f"[-] Starting training for {epochs} epochs ({total_training_steps:,} optimizer steps)...")
-
+    print("[-] Starting training...")
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_loss = 0.0
-        optimizer.zero_grad()
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{epochs}", unit="batch")
 
-        for step, batch in enumerate(train_loader, start=1):
+        for step, batch in enumerate(pbar):
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
 
             if use_amp:
-                with torch.amp.autocast(device_type=device.type, dtype=amp_dtype):
+                with torch.amp.autocast("cuda", dtype=amp_dtype):
                     outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
                     loss = outputs.loss / gradient_accumulation_steps
                 scaler.scale(loss).backward()
@@ -328,7 +348,7 @@ def train(
 
             epoch_loss += loss.item() * gradient_accumulation_steps
 
-            if step % gradient_accumulation_steps == 0 or step == len(train_loader):
+            if (step + 1) % gradient_accumulation_steps == 0 or (step + 1) == len(train_loader):
                 if use_amp and amp_dtype == torch.float16:
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -342,30 +362,28 @@ def train(
                 optimizer.zero_grad()
                 global_step += 1
 
+                pbar.set_postfix({
+                    "loss": f"{loss.item() * gradient_accumulation_steps:.4f}",
+                    "lr": f"{scheduler.get_last_lr()[0]:.2e}"
+                })
+
                 # Periodic Evaluation
                 if global_step % eval_every_steps == 0:
                     val_loss, val_ppl = evaluate(model, val_loader, device)
-                    elapsed = time.time() - start_time
-                    lr = scheduler.get_last_lr()[0]
-                    print(
-                        f"Epoch {epoch}/{epochs} | Step {global_step}/{total_training_steps} | "
-                        f"Train Loss: {loss.item()*gradient_accumulation_steps:.4f} | "
-                        f"Val Loss: {val_loss:.4f} | Val PPL: {val_ppl:.2f} | "
-                        f"LR: {lr:.2e} | Elapsed: {elapsed/60:.1f}m"
-                    )
+                    print(f"\n[Step {global_step}] Validation Loss: {val_loss:.4f} | Perplexity: {val_ppl:.2f}")
 
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
-                        print(f"[*] New best validation loss: {best_val_loss:.4f}. Saving to {best_model_path}...")
+                        print(f"[*] New best validation loss! Saving to {best_model_path}")
                         model.save_pretrained(best_model_path)
                         config.save_pretrained(best_model_path)
-
                     model.train()
 
-                # Periodic Checkpoint Saving
+                # Periodic Checkpoint
                 if global_step % save_every_steps == 0:
-                    ckpt_path = output_path / f"checkpoint-step-{global_step}"
+                    ckpt_path = output_path / f"checkpoint_step_{global_step}"
                     model.save_pretrained(ckpt_path)
+                    config.save_pretrained(ckpt_path)
 
         print(f"[✓] Completed Epoch {epoch}/{epochs}. Average Epoch Loss: {epoch_loss/len(train_loader):.4f}")
 
@@ -378,7 +396,7 @@ def train(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train 22M Greek Keyboard LLaMA Model")
+    parser = argparse.ArgumentParser(description="Train ~36M Greek Keyboard LLaMA Model for FUTO")
     parser.add_argument("--train_file", type=str, default="data/processed/train.txt",
                         help="Path to training data text file")
     parser.add_argument("--val_file", type=str, default="data/processed/val.txt",
@@ -396,6 +414,10 @@ def main():
     parser.add_argument("--eval_every", type=int, default=250, help="Evaluation frequency in steps")
     parser.add_argument("--save_every", type=int, default=500, help="Checkpoint frequency in steps")
     parser.add_argument("--max_seq_len", type=int, default=256, help="Max context window")
+    parser.add_argument("--num_layers", type=int, default=9, help="Number of Transformer layers (FUTO standard: 9)")
+    parser.add_argument("--hidden_size", type=int, default=512, help="Hidden dimension d_model (FUTO standard: 512)")
+    parser.add_argument("--intermediate_size", type=int, default=1376, help="SwiGLU intermediate dimension (default: 1376)")
+    parser.add_argument("--untie_embeddings", action="store_true", help="Untie input embedding and lm_head weights")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
@@ -414,6 +436,10 @@ def main():
         eval_every_steps=args.eval_every,
         save_every_steps=args.save_every,
         max_seq_len=args.max_seq_len,
+        num_layers=args.num_layers,
+        hidden_size=args.hidden_size,
+        intermediate_size=args.intermediate_size,
+        tie_embeddings=not args.untie_embeddings,
         num_workers=args.num_workers,
         seed=args.seed
     )

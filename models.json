@@ -12,8 +12,8 @@
       "name": "Greek Keyboard LM (Q6_K)",
       "filename": "el_keyboard_Q6_K.gguf",
       "quantization": "Q6_K",
-      "filesize_bytes": 21000000,
-      "parameters": "22.8M",
+      "filesize_bytes": 22000000,
+      "parameters": "36.1M",
       "context_window": 256,
       "features": [
         "base_v1",
@@ -28,8 +28,8 @@
       "name": "Greek Keyboard LM (Q8_0)",
       "filename": "el_keyboard_Q8_0.gguf",
       "quantization": "Q8_0",
-      "filesize_bytes": 26000000,
-      "parameters": "22.8M",
+      "filesize_bytes": 27000000,
+      "parameters": "36.1M",
       "context_window": 256,
       "features": [
         "base_v1",
