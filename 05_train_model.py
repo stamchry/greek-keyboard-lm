@@ -215,6 +215,7 @@ def train(
     tie_embeddings: bool = True,
     num_workers: int = 2,
     num_threads: Optional[int] = 16,
+    autocorrect_ratio: float = 0.30,
     resume_from: Optional[str] = None,
     seed: int = 42
 ):
@@ -249,14 +250,14 @@ def train(
         text_file=train_file,
         sp_model_path=sp_model_file,
         max_seq_len=max_seq_len,
-        autocorrect_ratio=0.30,
+        autocorrect_ratio=autocorrect_ratio,
         is_train=True
     )
     val_dataset = GreekKeyboardDataset(
         text_file=val_file,
         sp_model_path=sp_model_file,
         max_seq_len=max_seq_len,
-        autocorrect_ratio=0.30,
+        autocorrect_ratio=autocorrect_ratio,
         is_train=False
     )
 
@@ -428,6 +429,8 @@ def main():
     parser.add_argument("--hidden_size", type=int, default=512, help="Hidden dimension d_model (FUTO standard: 512)")
     parser.add_argument("--intermediate_size", type=int, default=1376, help="SwiGLU intermediate dimension (default: 1376)")
     parser.add_argument("--untie_embeddings", action="store_true", help="Untie input embedding and lm_head weights")
+    parser.add_argument("--autocorrect_ratio", type=float, default=0.30,
+                        help="Proportion of training lines converted to autocorrect sequences (default: 0.30, use 0.80 for Stage 2 fine-tuning)")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--num_threads", type=int, default=16, help="Max CPU threads to use for PyTorch (default: 16)")
     parser.add_argument("--resume_from", type=str, default=None, help="Path to checkpoint directory to resume from")
@@ -454,6 +457,7 @@ def main():
         tie_embeddings=not args.untie_embeddings,
         num_workers=args.num_workers,
         num_threads=args.num_threads,
+        autocorrect_ratio=args.autocorrect_ratio,
         resume_from=args.resume_from,
         seed=args.seed
     )

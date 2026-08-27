@@ -96,7 +96,7 @@ def export_to_gguf(
     author: str = "Community",
     description: str = "Modern Greek Transformer LM for FUTO Keyboard",
     languages: str = "el",
-    features: str = "base_v1 inverted_space xbu_char_autocorrect_v1 lora_finetunable_v1"
+    features: str = "base_v1 inverted_space lora_finetunable_v1"
 ):
     """Converts PyTorch checkpoint to GGUF format and writes FUTO metadata."""
     print("=" * 60)
@@ -149,9 +149,8 @@ def export_to_gguf(
     gguf_writer.add_string("keyboardlm.languages", languages)
     gguf_writer.add_string("keyboardlm.features", features)
     gguf_writer.add_string("keyboardlm.ext_tokenizer_type", "sentencepiece")
-    # Store raw bytes as uint8 array
-    tokenizer_byte_array = list(tokenizer_bytes)
-    gguf_writer.add_array("keyboardlm.ext_tokenizer_data", tokenizer_byte_array)
+    # Store raw bytes as uint8 array for FUTO Keyboard SentencePiece loader
+    gguf_writer.add_array("keyboardlm.ext_tokenizer_data", tokenizer_bytes)
     gguf_writer.add_uint32("keyboardlm.finetuning_count", 0)
     gguf_writer.add_string("keyboardlm.history", "")
 
@@ -190,22 +189,36 @@ def export_to_gguf(
     gguf_writer.add_pad_token_id(sp.pad_id() if sp.pad_id() != -1 else 3)
 
     # D. Model Tensors
-    print(f"[-] Writing {len(state_dict)} tensors with data type {out_type}...")
+    print(f"[-] Writing tensors with data type {out_type}...")
     dtype_map = {
         "f32": np.float32,
         "f16": np.float16
     }
     target_np_dtype = dtype_map.get(out_type, np.float16)
 
+    tensor_names_added = set()
     for pt_name, tensor in state_dict.items():
         gguf_name = map_tensor_name(pt_name)
+        tensor_names_added.add(gguf_name)
         data = tensor.detach().cpu().numpy()
 
-        # Convert float weights to target dtype (float16 / float32)
-        if data.dtype in (np.float32, np.float64, np.float16):
+        # In GGUF, 1D norm weights (RMSNorm) must always be float32 for GGML binary ops
+        if "norm" in gguf_name:
+            data = data.astype(np.float32)
+        elif data.dtype in (np.float32, np.float64, np.float16):
             data = data.astype(target_np_dtype)
 
         gguf_writer.add_tensor(gguf_name, data)
+
+    # CRITICAL FOR FUTO KEYBOARD: If output.weight (lm_head) was tied, explicitly duplicate it as output.weight
+    if "output.weight" not in tensor_names_added:
+        print("[-] Tied embeddings detected: explicitly duplicating token_embd.weight as output.weight for FUTO Keyboard runtime...")
+        embed_tensor = state_dict["model.embed_tokens.weight"].detach().cpu().numpy()
+        embed_data = embed_tensor.astype(target_np_dtype)
+        gguf_writer.add_tensor("output.weight", embed_data)
+        tensor_names_added.add("output.weight")
+
+    print(f"[-] Total tensors written to GGUF: {len(tensor_names_added)}")
 
     # Write GGUF file
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -257,6 +270,10 @@ def main():
                         help="Path to SentencePiece tokenizer.model")
     parser.add_argument("--output_file", type=str, default="models/gguf/el_keyboard_f16.gguf",
                         help="Path to output GGUF file")
+    parser.add_argument("--languages", type=str, default="el",
+                        help="Space-separated language codes (default: 'el')")
+    parser.add_argument("--features", type=str, default="base_v1 inverted_space lora_finetunable_v1",
+                        help="Space-separated feature flags (default: 'base_v1 inverted_space lora_finetunable_v1')")
     parser.add_argument("--out_type", type=str, choices=["f16", "f32"], default="f16",
                         help="Floating point precision for unquantized export")
     parser.add_argument("--quantize", action="store_true",
@@ -271,7 +288,9 @@ def main():
         model_dir=model_path,
         tokenizer_file=tokenizer_path,
         output_file=output_path,
-        out_type=args.out_type
+        out_type=args.out_type,
+        languages=args.languages,
+        features=args.features
     )
 
     if args.quantize:

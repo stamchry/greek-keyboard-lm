@@ -48,3 +48,9 @@ HANDOUT.md
 .vscode/
 *.swp
 *.swo
+
+# External repos & local learning notes
+llama.cpp/
+learning_guide.md
+full_course.md
+handover.md
