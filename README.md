@@ -57,14 +57,16 @@ flowchart TD
 greek-keyboard-lm/
 ├── 01_download_and_clean_data.py   # 1. Dataset streaming, cleaning, and QA splitting
 ├── 02_inspect_data.py              # 2. Diagnostic audit & monotonic accent compliance
-├── 03_train_sentencepiece.py       # 3. SentencePiece Unigram trainer (15,008 vocab)
+├── 03_train_sentencepiece.py       # 3. SentencePiece Unigram trainer (15,008 vocab + byte_fallback)
 ├── 04_generate_corruptions.py      # 4. Synthetic Greek typo & iotacism corruption engine
-├── 05_train_model.py               # 5. 36.1M parameter mini-LLaMA PyTorch trainer
-├── 06_export_to_gguf.py            # 6. GGUF exporter with embedded FUTO metadata & tokenizer
+├── 05_train_model.py               # 5. ~36M parameter mini-LLaMA PyTorch trainer
+├── 06_export_to_gguf.py            # 6. GGUF exporter with embedded FUTO metadata & output.weight
 ├── 07_evaluate_model.py            # 7. Benchmarks (PPL, Top-k, Accents) & Interactive REPL
+├── check_gguf.py                   # GGUF & FUTO KeyboardLM metadata inspector
+├── demo.py                         # Interactive CLI mobile keyboard suggestion bar simulator
+├── plot_training.py                # Visualizer for live loss curves (PNG & terminal ASCII)
 ├── models.json                     # FUTO Keyboard catalog manifest
 ├── requirements.txt                # Python dependencies
-├── .env.example                    # Hugging Face authentication token template
 └── README.md                       # Documentation
 ```
 
@@ -85,10 +87,6 @@ source .venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
-
-# 4. Optional: Configure Hugging Face Token for faster streaming
-cp .env.example .env
-# Edit .env and paste your token: HF_TOKEN=hf_...
 ```
 
 ---
@@ -107,9 +105,9 @@ python3 01_download_and_clean_data.py \
 ```
 
 Outputs:
-- `data/processed/train.txt`
-- `data/processed/val.txt`
-- `data/processed/test.txt`
+- `data/processed/train.txt` (257,519 lines)
+- `data/processed/val.txt` (6,776 lines)
+- `data/processed/test.txt` (6,776 lines)
 - `data/processed/dataset_stats.json`
 
 ---
@@ -126,7 +124,7 @@ python3 02_inspect_data.py \
 ---
 
 ### Step 3: Train SentencePiece Tokenizer
-Trains a 15,008 vocabulary Unigram tokenizer with `treat_whitespace_as_suffix=True` and FUTO control tokens (`<XBU>`, `<XBC>`, `<XEC>`).
+Trains a 15,008 vocabulary Unigram tokenizer with `treat_whitespace_as_suffix=True`, `byte_fallback=True` (required for `<0x0A>` newline byte lookup in `llama.cpp`), and FUTO control tokens (`<XBU>`, `<XBC>`, `<XEC>`).
 
 ```bash
 python3 03_train_sentencepiece.py \
@@ -134,11 +132,6 @@ python3 03_train_sentencepiece.py \
     --output_dir models/tokenizer \
     --vocab_size 15008
 ```
-
-Outputs:
-- `models/tokenizer/tokenizer.model`
-- `models/tokenizer/tokenizer.vocab`
-- Hugging Face configuration files (`tokenizer_config.json`, `special_tokens_map.json`)
 
 ---
 
@@ -159,7 +152,7 @@ python3 04_generate_corruptions.py \
 ---
 
 ### Step 5: Train ~36M LLaMA Model
-Trains the custom 36.1M parameter LLaMA model using PyTorch, dynamically mixing 70% clean next-token sequences and 30% autocorrect prompts with AdamW and cosine decay.
+Trains the custom 36.1M parameter LLaMA model using PyTorch with `bfloat16` mixed precision, dynamically mixing 50% clean next-token sequences and 50% autocorrect prompts with AdamW and cosine decay.
 
 ```bash
 python3 05_train_model.py \
@@ -167,15 +160,17 @@ python3 05_train_model.py \
     --val_file data/processed/val.txt \
     --tokenizer_dir models/tokenizer \
     --output_dir models/checkpoints \
+    --autocorrect_ratio 0.50 \
     --epochs 5 \
     --batch_size 32 \
+    --grad_accum 2 \
     --lr 3e-4
 ```
 
 ---
 
 ### Step 6: Export to GGUF & Inject FUTO Metadata
-Converts trained PyTorch weights to GGUF format and embeds the raw SentencePiece binary and required FUTO metadata:
+Converts trained PyTorch weights to GGUF format, explicitly duplicates `token_embd.weight` as `output.weight` (mandated by FUTO's embedded GGML runtime), and embeds the raw SentencePiece binary and required FUTO metadata:
 
 ```bash
 python3 06_export_to_gguf.py \
@@ -188,48 +183,56 @@ python3 06_export_to_gguf.py \
 Injected FUTO Metadata Keys:
 ```python
 keyboardlm.languages = "el"
-keyboardlm.features = "base_v1 inverted_space xbu_char_autocorrect_v1 lora_finetunable_v1"
+keyboardlm.features = "base_v1 inverted_space lora_finetunable_v1"
 keyboardlm.ext_tokenizer_type = "sentencepiece"
-keyboardlm.ext_tokenizer_data = <raw tokenizer.model binary>
+keyboardlm.ext_tokenizer_data = <raw tokenizer.model UINT8 binary bytes>
 keyboardlm.finetuning_count = 0
 keyboardlm.history = ""
 ```
 
 ---
 
-### Step 7: Evaluate Model Performance
-Runs next-token perplexity, top-k accuracy, and verifies the $>95\%$ accent restoration benchmark. Also includes an interactive console mode:
+### Step 7: Inspect & Evaluate Model Performance
 
+#### 1. Inspect GGUF Metadata Compliance:
 ```bash
-# Automated evaluation benchmark
+python3 check_gguf.py models/gguf/el_keyboard_Q6_K.gguf
+```
+
+#### 2. Automated Evaluation Benchmark:
+```bash
 python3 07_evaluate_model.py \
     --model_dir models/checkpoints/best_model \
     --tokenizer_file models/tokenizer/tokenizer.model \
     --test_file data/processed/test.txt \
     --eval_jsonl data/autocorrect_eval.jsonl
+```
 
-# Interactive live console mode
-python3 07_evaluate_model.py \
-    --model_dir models/checkpoints/best_model \
-    --tokenizer_file models/tokenizer/tokenizer.model \
-    --interactive
+#### 3. Interactive CLI Keyboard Simulator:
+```bash
+python3 demo.py
 ```
 
 ---
 
-## 4. Mobile Deployment to FUTO Keyboard
+## 5. Mobile Deployment to FUTO Keyboard
 
-1. **Copy Model**: Transfer `el_keyboard_Q6_K.gguf` to your Android device storage.
-2. **Open FUTO Keyboard**:
+1. **Transfer Model**: Copy `models/gguf/el_keyboard_Q6_K.gguf` (~36MB) to your Android device storage.
+2. **Unlock Developer Mode**:
+   - Open **FUTO Keyboard Settings → Help & About**.
+   - Tap **"Version code" 8 times rapidly** to unlock Developer Settings.
+3. **Enable Non-QWERTY Layout Support**:
+   - Open **Settings → Developer** $\to$ toggle **"Allow transformer models on non QWERTY layouts"** to **ON**.
+4. **Import & Set Default**:
    - Go to **Settings → Predictive Text → Transformer Models**.
-   - Tap **Actions → Import from file**.
-   - Select `el_keyboard_Q6_K.gguf`.
-3. **Verify**:
-   - Enable Greek keyboard layout.
-   - Type unaccented words (e.g. `καλημερα`) and observe immediate accented suggestions (`καλημέρα`).
+   - Tap **Actions (top-right) → Import from file** $\to$ select `el_keyboard_Q6_K.gguf`.
+   - Tap the imported model and ensure it displays: **"Model is set to default for el"**.
+5. **Verify in Chat**:
+   - Switch to Greek keyboard layout.
+   - A small horizontal indicator line appears under transformer suggestions in the top suggestion strip.
 
 ---
 
-## 5. License
+## 6. License
 
 Apache-2.0 License.

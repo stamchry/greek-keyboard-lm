@@ -53,6 +53,7 @@ def train_tokenizer(
         f"--character_coverage={character_coverage} "
         f"--model_type={model_type} "
         f"--treat_whitespace_as_suffix=true "
+        f"--byte_fallback=true "
         f"--split_by_unicode_script=true "
         f"--split_by_whitespace=true "
         f"--split_by_number=true "
