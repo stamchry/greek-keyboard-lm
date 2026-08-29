@@ -47,7 +47,7 @@ flowchart TD
 | **Tokenizer Flags** | `treat_whitespace_as_suffix=True` | **Mandatory** for keystroke prefix matching |
 | **Vocabulary Size** | `15,008` tokens | Compact embedding table (~8MB) and fast softmax |
 | **Control Tokens** | `<XBU>`, `<XBC>`, `<XEC>` | Autocorrect protocol: `[Ctx] <XBU>error<XBC>target<XEC>` |
-| **Quantization** | `Q6_K` (~22MB) & `Q8_0` (~27MB) | Memory-efficient for mobile RAM |
+| **Quantization** | `Q6_K` (~36.8MB) & `Q8_0` (~45.4MB) | Memory-efficient for mobile RAM |
 
 ---
 
@@ -57,14 +57,14 @@ flowchart TD
 greek-keyboard-lm/
 ├── 01_download_and_clean_data.py   # 1. Dataset streaming, cleaning, and QA splitting
 ├── 02_inspect_data.py              # 2. Diagnostic audit & monotonic accent compliance
-├── 03_train_sentencepiece.py       # 3. SentencePiece Unigram trainer (15,008 vocab + byte_fallback)
+├── 03_train_sentencepiece.py       # 3. SentencePiece Unigram trainer (whole-word seeded, 15,008 vocab)
 ├── 04_generate_corruptions.py      # 4. Synthetic Greek typo & iotacism corruption engine
-├── 05_train_model.py               # 5. ~36M parameter mini-LLaMA PyTorch trainer
+├── 05_train_model.py               # 5. ~36.15M parameter mini-LLaMA PyTorch trainer
 ├── 06_export_to_gguf.py            # 6. GGUF exporter with embedded FUTO metadata & output.weight
 ├── 07_evaluate_model.py            # 7. Benchmarks (PPL, Top-k, Accents) & Interactive REPL
 ├── check_gguf.py                   # GGUF & FUTO KeyboardLM metadata inspector
 ├── demo.py                         # Interactive CLI mobile keyboard suggestion bar simulator
-├── plot_training.py                # Visualizer for live loss curves (PNG & terminal ASCII)
+├── run_training.sh                 # Unified orchestration script (Train -> Export -> Quantize -> Evaluate)
 ├── models.json                     # FUTO Keyboard catalog manifest
 ├── requirements.txt                # Python dependencies
 └── README.md                       # Documentation
@@ -124,7 +124,7 @@ python3 02_inspect_data.py \
 ---
 
 ### Step 3: Train SentencePiece Tokenizer
-Trains a 15,008 vocabulary Unigram tokenizer with `treat_whitespace_as_suffix=True`, `byte_fallback=True` (required for `<0x0A>` newline byte lookup in `llama.cpp`), and FUTO control tokens (`<XBU>`, `<XBC>`, `<XEC>`).
+Trains a 15,008 vocabulary Unigram tokenizer with `treat_whitespace_as_suffix=True`, `byte_fallback=True`, whole-word frequency seeding (guaranteeing >70% whole words and eliminating dangling suffix fragments like `[εύς]`, `[ούπολη]`), and FUTO control tokens (`<XBU>`, `<XBC>`, `<XEC>`).
 
 ```bash
 python3 03_train_sentencepiece.py \
