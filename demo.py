@@ -54,6 +54,7 @@ def predict_next_words(model, sp, device, text: str, top_k: int = 5):
 def autocorrect_word(model, sp, device, word: str, context: str = ""):
     bos_id = sp.bos_id() if sp.bos_id() != -1 else 1
     xec_id = sp.PieceToId("<XEC>")
+    xbc_id = sp.PieceToId("<XBC>")
 
     if context:
         prompt_text = f"{context.strip()} <XBU>{word.strip()}<XBC>"
@@ -61,6 +62,7 @@ def autocorrect_word(model, sp, device, word: str, context: str = ""):
         prompt_text = f"<XBU>{word.strip()}<XBC>"
 
     token_ids = [bos_id] + sp.EncodeAsIds(prompt_text)
+
     curr_input = torch.tensor([token_ids], dtype=torch.long, device=device)
 
     generated_ids = []
@@ -77,10 +79,11 @@ def autocorrect_word(model, sp, device, word: str, context: str = ""):
 
 
 def run_interactive():
-    model_dir = "models/checkpoints/best_model"
+    model_dir = "models/checkpoints/best_model/final_model"
     tokenizer_path = "models/tokenizer/tokenizer.model"
 
-    if not Path(model_dir).exists() or not Path(tokenizer_path).exists():
+    if not Path(model_dir).exists():
+        model_dir = "models/checkpoints/best_model/best_model"
         print(f"\033[1;31m[!] Model or tokenizer not found at {model_dir}. Please ensure checkpoints exist.\033[0m")
         sys.exit(1)
 

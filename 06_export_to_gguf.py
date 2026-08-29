@@ -179,7 +179,7 @@ def export_to_gguf(
         else:
             toktypes.append(gguf.TokenType.NORMAL)
 
-    gguf_writer.add_tokenizer_model("llama")
+    gguf_writer.add_tokenizer_model("t5")
     gguf_writer.add_token_list(tokens)
     gguf_writer.add_token_scores(scores)
     gguf_writer.add_token_types(toktypes)

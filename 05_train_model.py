@@ -98,7 +98,11 @@ class GreekKeyboardDataset(Dataset):
             else:
                 text_to_encode = line
         else:
-            text_to_encode = line
+            # 35% chance to train on unaccented mobile typing context
+            if self.is_train and random.random() < 0.35 and GreekCorrupter is not None:
+                text_to_encode = GreekCorrupter.strip_accents(line)
+            else:
+                text_to_encode = line
 
         # Encode tokens
         token_ids = [self.bos_id] + self.sp.EncodeAsIds(text_to_encode) + [self.eos_id]
@@ -111,6 +115,15 @@ class GreekKeyboardDataset(Dataset):
         seq_len = len(token_ids)
         input_ids = token_ids.copy()
         labels = token_ids.copy()
+
+        # Prompt masking for autocorrect samples:
+        # Mask out everything up to and including <XBC> with -100 so loss is only computed on target + <XEC>
+        if use_autocorrect:
+            xbc_id = self.sp.PieceToId("<XBC>")
+            if xbc_id in input_ids:
+                xbc_idx = input_ids.index(xbc_id)
+                for i in range(xbc_idx + 1):
+                    labels[i] = -100
 
         # Pad to max_seq_len
         padding_len = self.max_seq_len - seq_len

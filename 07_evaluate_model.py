@@ -165,6 +165,7 @@ def evaluate_accent_restoration(
 
     bos_id = sp.bos_id() if sp.bos_id() != -1 else 1
     xec_id = sp.PieceToId("<XEC>")
+    xbc_id = sp.PieceToId("<XBC>")
 
     correct_top1 = 0
     correct_top3 = 0
@@ -234,6 +235,7 @@ def evaluate_synthetic_autocorrect(
 
     bos_id = sp.bos_id() if sp.bos_id() != -1 else 1
     xec_id = sp.PieceToId("<XEC>")
+    xbc_id = sp.PieceToId("<XBC>")
 
     correct = 0
     total = 0
