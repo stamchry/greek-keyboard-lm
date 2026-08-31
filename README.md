@@ -1,6 +1,12 @@
 # Greek Transformer Language Model for FUTO Keyboard
 
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-stamchry%2Fgreek--keyboard--lm-yellow.svg)](https://huggingface.co/stamchry/greek-keyboard-lm)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 Custom Modern Greek (`el`) predictive text and autocorrect Transformer Language Model (~36.1M parameters) built for the **FUTO Android Keyboard**.
+
+📦 **Pre-trained GGUF Models & Weights Available on Hugging Face:**  
+👉 **[https://huggingface.co/stamchry/greek-keyboard-lm](https://huggingface.co/stamchry/greek-keyboard-lm)**
 
 ---
 
@@ -222,7 +228,9 @@ python3 demo.py
 > To support Greek in-word typing, Unicode codepoints, and spatial keystroke decoding, install the APK built from the Greek-enabled fork:
 > **[https://github.com/stamchry/android-keyboard](https://github.com/stamchry/android-keyboard)**
 
-1. **Transfer Model**: Copy `models/gguf/el_keyboard_v3_Q6_K.gguf` (~36.8MB) to your Android device storage.
+1. **Download / Transfer Model**:
+   - Download the pre-quantized `el_keyboard_v3_Q6_K.gguf` (~36.8MB) directly from **[Hugging Face Models](https://huggingface.co/stamchry/greek-keyboard-lm/tree/main)** (or copy from `models/gguf/`).
+   - Transfer it to your Android device storage.
 2. **Unlock Developer Mode**:
    - Open **FUTO Keyboard Settings → Help & About**.
    - Tap **"Version code" 8 times rapidly** to unlock Developer Settings.
