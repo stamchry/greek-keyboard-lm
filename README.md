@@ -217,7 +217,12 @@ python3 demo.py
 
 ## 5. Mobile Deployment to FUTO Keyboard
 
-1. **Transfer Model**: Copy `models/gguf/el_keyboard_Q6_K.gguf` (~36MB) to your Android device storage.
+> [!IMPORTANT]
+> **Use the Patched Keyboard Fork:**
+> To support Greek in-word typing, Unicode codepoints, and spatial keystroke decoding, install the APK built from the Greek-enabled fork:
+> **[https://github.com/stamchry/android-keyboard](https://github.com/stamchry/android-keyboard)**
+
+1. **Transfer Model**: Copy `models/gguf/el_keyboard_v3_Q6_K.gguf` (~36.8MB) to your Android device storage.
 2. **Unlock Developer Mode**:
    - Open **FUTO Keyboard Settings → Help & About**.
    - Tap **"Version code" 8 times rapidly** to unlock Developer Settings.
@@ -225,7 +230,7 @@ python3 demo.py
    - Open **Settings → Developer** $\to$ toggle **"Allow transformer models on non QWERTY layouts"** to **ON**.
 4. **Import & Set Default**:
    - Go to **Settings → Predictive Text → Transformer Models**.
-   - Tap **Actions (top-right) → Import from file** $\to$ select `el_keyboard_Q6_K.gguf`.
+   - Tap **Actions (top-right) → Import from file** $\to$ select `el_keyboard_v3_Q6_K.gguf`.
    - Tap the imported model and ensure it displays: **"Model is set to default for el"**.
 5. **Verify in Chat**:
    - Switch to Greek keyboard layout.
