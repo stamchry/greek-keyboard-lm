@@ -99,15 +99,15 @@ Ingests Opus-100 dialogues, Opus Books literature, and Greek Wikipedia. Strips s
 ```bash
 python3 01_download_and_clean_data.py \
     --output_dir data/processed \
-    --max_conv 200000 \
-    --max_lit 30000 \
-    --max_wiki 70000
+    --max_conv 500000 \
+    --max_lit 100000 \
+    --max_wiki 200000
 ```
 
 Outputs:
-- `data/processed/train.txt` (257,519 lines)
-- `data/processed/val.txt` (6,776 lines)
-- `data/processed/test.txt` (6,776 lines)
+- `data/processed/train.txt` (666,012 lines)
+- `data/processed/val.txt` (17,526 lines)
+- `data/processed/test.txt` (17,526 lines)
 - `data/processed/dataset_stats.json`
 
 ---

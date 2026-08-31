@@ -28,7 +28,7 @@ python3 05_train_model.py \
     --eval_every 500 \
     --save_every 1000 \
     --max_seq_len 256 \
-    --autocorrect_ratio 0.0
+    --autocorrect_ratio 0.50
 
 echo "[2/4] Exporting and Quantizing to GGUF (v3)..."
 python3 06_export_to_gguf.py \
